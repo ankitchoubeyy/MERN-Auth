@@ -127,3 +127,69 @@ export const logoutUser = async (req, res) => {
     .status(200)
     .json({ success: true, message: "User logged out successfully" });
 };
+
+// Controller to sent OTP for verifying user
+export const sendVerifyOTP = async (req, res) => {
+    try {
+        const {userId} = req.body;
+        const user = await User.findById(userId);
+
+        if(user.isAccountVerified){
+            return res.status(400).json({success: false, message: "Account already verified"});
+        }
+
+        const otp = String(Math.floor(100000 + Math.random() * 900000));
+        user.verifyOTP = otp;
+        user.verifyOTPExpire = Date.now() + 24 * 60 * 60 * 1000;
+        await user.save();
+
+        const mailOptions = {
+            from : process.env.SENDER_EMAIL,
+            to : "imkitchoubey@gmail.com",
+            subject : "Verify your email",
+            text : `Your verification code is ${otp}. Please do not share this code with anyone.`,
+            html : `<b>Your verification code is ${otp}. Please do not share this code with anyone.</b>`
+        }
+
+        await transporter.sendMail(mailOptions);
+
+        res.status(200).json({success: true, message: "OTP sent successfully"});
+    } catch (error) {
+        
+    }
+}
+
+// Controller to verify user
+export const verifyEmail = async (req, res) => {
+    const {userId, otp} = req.body;
+    try {
+        const user = await User.findById(userId);
+
+        if(!user){
+            return res.status(400).json({success: false, message: "User not found"});
+        }
+
+        if(user.isAccountVerified){
+            return res.status(400).json({success: false, message: "Account already verified"});
+        }
+
+        if(user.verifyOTP !== otp || user.verifyOTPExpire === ''){
+            return res.status(400).json({success: false, message: "Invalid OTP"});
+        }
+
+        if(user.verifyOTPExpire < Date.now()){
+            return res.status(400).json({success: false, message: "OTP expired"});
+        }
+
+        user.isAccountVerified = true;
+        user.verifyOTP = '';
+        user.verifyOTPExpire = 0;
+        
+        await user.save();
+
+        res.status(200).json({success: true, message: "Account verified successfully"});
+    } catch (error) {
+        console.log(error);
+        res.status(400).json({success: false, message: error.message});
+    }
+}
